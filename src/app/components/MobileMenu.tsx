@@ -32,10 +32,10 @@ export default function MobileMenu({
                     <nav className="text-center">
                         <ul className="space-y-8">
                             {[
-                                { href: "#product", label: "Shopify(BE)" },
-                                { href: "#about", label: "CalcUS(BE)" },
-                                { href: "#contact", label: "CalcUS" },
-                                { href: "#calc", label: "CalcUS(Reverse)" },
+                                { href: "https://enyukari.capoo.jp/profit-calc/shopify-be/", label: "Shopify(BE)" },
+                                { href: "https://enyukari.capoo.jp/profit-calc/be-us/", label: "CalcUS(BE)" },
+                                { href: "https://enyukari.capoo.jp/profit-calc/us-calc/", label: "CalcUS" },
+                                { href: "https://enyukari.capoo.jp/profit-calc/reverse/", label: "CalcUS(Reverse)" },
                                 { href: "#reservation", label: "Resevation" },
                             ].map((item) => (
                                 <li key={item.href}>
