@@ -1,103 +1,162 @@
-import Image from "next/image";
+// src/app/page.tsx
+"use client";
+
+import React, { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import { motion, AnimatePresence } from "framer-motion";
+import MenuButton from "./components/MenuButton";
+import MobileMenu from "./components/MobileMenu";
+
+const SpaceHero = dynamic(() => import("./components/SpaceHero"), { ssr: false });
+
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  // マウント判定（SSR→CSRの一瞬は描画しない）
+  const [mounted, setMounted] = useState(false);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // 初回セッション時のみローダー制御
+  const [booting, setBooting] = useState(true);
+  const [heroReady, setHeroReady] = useState(false);
+  const [minTimerDone, setMinTimerDone] = useState(false);
+
+  const MIN_VISIBLE_MS = 400;
+  const SAFETY_MS = 4000; // ← セーフティ（onReadyが来なくても閉じる）
+  const minTimerRef = useRef<number | null>(null);
+  const safetyRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    // クライアントでのみ実行
+    const visited = sessionStorage.getItem("visited");
+    if (visited) {
+      setBooting(false); // 2回目以降：ローダー出さない
+    } else {
+      sessionStorage.setItem("visited", "true");
+      // 最低表示時間
+      minTimerRef.current = window.setTimeout(() => setMinTimerDone(true), MIN_VISIBLE_MS);
+      // セーフティ
+      safetyRef.current = window.setTimeout(() => setHeroReady(true), SAFETY_MS);
+    }
+    setMounted(true);
+
+    return () => {
+      if (minTimerRef.current) clearTimeout(minTimerRef.current);
+      if (safetyRef.current) clearTimeout(safetyRef.current);
+    };
+  }, []);
+
+  // 初回のみ、SpaceHero準備 & 最低表示の両方が揃ったらローダー解除
+  useEffect(() => {
+    if (heroReady && minTimerDone) setBooting(false);
+  }, [heroReady, minTimerDone]);
+
+  // ─────────────────────────────────────────────
+  // 0) マウント前は何も描かない（= チカつき回避）
+  if (!mounted) {
+    return <main className="min-h-screen bg-black text-white" />;
+  }
+
+  // 1) 初回セッション中はローダーのみを描画
+  if (booting) {
+    return (
+      <main className="relative isolate bg-black text-white">
+        <AnimatePresence initial={false}>
+          <motion.div
+            key="page-loader"
+            initial={{ opacity: 1 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: 0.45 } }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            <div className="text-center">
+              <div className="text-white/90 text-2xl font-semibold tracking-tight">muu.studio</div>
+              <div className="mt-6 h-1 w-64 overflow-hidden rounded-full bg-white/10">
+                <div className="h-full w-1/3 bg-white animate-[marquee_1.2s_linear_infinite]" />
+              </div>
+              <div className="mt-3 text-sm text-white/60">Initializing…</div>
+            </div>
+          </motion.div>
+        </AnimatePresence>
+
+        {/* キーフレーム（ローダーバー） */}
+        <style jsx global>{`
+          @keyframes marquee { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
+        `}</style>
+
+        {/* ← 重要：不可視で SpaceHero をマウントして onReady を受け取る */}
+        <div aria-hidden style={{ position: "absolute", width: 0, height: 0, overflow: "hidden" }}>
+          <SpaceHero
+            onReady={() => setHeroReady(true)}
+            particleCount={2600}
           >
-            Read our docs
-          </a>
+            <div />
+          </SpaceHero>
         </div>
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
+    );
+  }
+
+  // 2) 本体（2回目以降は最初からこちら）
+  return (
+    <main className="relative isolate bg-black text-white">
+      {/* Header：常時ハンバーガー */}
+      <header className="sticky top-0 z-[90] border-b border-white/10 bg-black/70 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
+          <div className="font-semibold">muu.studio</div>
+
+          {/* 右側は常時ハンバーガー（PCでも） */}
+          <MenuButton open={menuOpen} toggle={() => setMenuOpen((v) => !v)} />
+        </div>
+      </header>
+
+      {/* フルスクリーンメニュー */}
+      <MobileMenu open={menuOpen} close={() => setMenuOpen(false)} />
+
+      {/* Hero */}
+      <section className="relative mx-auto max-w-7xl px-4 py-16 sm:py-24">
+        <div className="will-change-transform">
+          <SpaceHero
+            onReady={() => { /* 2回目以降は特に何もしない */ }}
+            particleCount={2600}
+          >
+            <div className="pointer-events-none text-center relative z-10">
+              <motion.h1
+                initial={false}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6 }}
+                className="text-5xl font-bold tracking-tight sm:text-7xl"
+              >
+                Fully automated<br />The ultimate machine
+              </motion.h1>
+              <p className="mt-4 text-white/70">
+                Sustainable, cost-efficient and scalable — ready for the future.
+              </p>
+            </div>
+          </SpaceHero>
+        </div>
+      </section>
+
+      {/* 3カラム訴求 */}
+      <section id="product" className="mx-auto max-w-7xl px-4 py-20">
+        <div className="grid gap-6 sm:grid-cols-3">
+          {[
+            { title: "Autonomous", desc: "Replace manual steps with automated precision and reliability." },
+            { title: "Local", desc: "On-demand, near-shore production with short lead times." },
+            { title: "Cost-competitive", desc: "Scale efficiently while keeping unit economics in control." },
+          ].map((b, i) => (
+            <div key={i} className="rounded-2xl border border-white/10 bg-white/5 p-6 hover:bg-white/[0.07]">
+              <h3 className="text-xl font-semibold">{b.title}</h3>
+              <p className="mt-2 text-white/70">{b.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t border-white/10 py-10 text-center text-white/50">
+        © {new Date().getFullYear()} muu.studio
       </footer>
-    </div>
+    </main>
   );
 }
