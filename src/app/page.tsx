@@ -157,10 +157,14 @@ export default function Home() {
               href: "https://enyukari.capoo.jp/profit-calc/reverse/"
             },
           ].map((b, i) => (
-            <div key={i} className="rounded-2xl border border-white/10 bg-white/5 p-6 hover:bg-white/[0.07]">
+            <a key={i}
+              href={b.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-2xl border border-white/10 bg-white/5 p-6 hover:bg-white/[0.07]">
               <h3 className="text-xl font-semibold">{b.title}</h3>
               <p className="mt-2 text-white/70">{b.desc}</p>
-            </div>
+            </a>
           ))}
         </div>
       </section>
