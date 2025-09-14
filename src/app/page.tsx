@@ -141,9 +141,21 @@ export default function Home() {
       <section id="product" className="mx-auto max-w-7xl px-4 py-20">
         <div className="grid gap-6 sm:grid-cols-3">
           {[
-            { title: "Autonomous", desc: "Replace manual steps with automated precision and reliability." },
-            { title: "Local", desc: "On-demand, near-shore production with short lead times." },
-            { title: "Cost-competitive", desc: "Scale efficiently while keeping unit economics in control." },
+            {
+              title: "Shopify Calculator",
+              desc: "Shopify用の損益分岐点を簡単に計算できます。",
+              href: "https://enyukari.capoo.jp/profit-calc/shopify-be/"
+            },
+            {
+              title: "BreakEvenUS Calculator",
+              desc: "US向け損益分岐点を簡単に計算できます。",
+              href: "https://enyukari.capoo.jp/profit-calc/be-us/"
+            },
+            {
+              title: "ProfitMarginUS Calculator",
+              desc: "利益率やコスト入力により、簡単に売値を出せます。",
+              href: "https://enyukari.capoo.jp/profit-calc/reverse/"
+            },
           ].map((b, i) => (
             <div key={i} className="rounded-2xl border border-white/10 bg-white/5 p-6 hover:bg-white/[0.07]">
               <h3 className="text-xl font-semibold">{b.title}</h3>

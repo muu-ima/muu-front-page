@@ -32,9 +32,11 @@ export default function MobileMenu({
                     <nav className="text-center">
                         <ul className="space-y-8">
                             {[
-                                { href: "#product", label: "Product" },
-                                { href: "#about", label: "About" },
-                                { href: "#contact", label: "Contact" },
+                                { href: "#product", label: "Shopify(BE)" },
+                                { href: "#about", label: "CalcUS(BE)" },
+                                { href: "#contact", label: "CalcUS" },
+                                { href: "#calc", label: "CalcUS(Reverse)" },
+                                { href: "#reservation", label: "Resevation" },
                             ].map((item) => (
                                 <li key={item.href}>
                                     <a
