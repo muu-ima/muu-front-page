@@ -1,11 +1,53 @@
 // src/app/components/SpaceHero.tsx
 "use client";
 
-import React, { useMemo, useRef, useEffect } from "react";
+import React, { useMemo, useRef, useEffect, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Grid } from "@react-three/drei";
 import * as THREE from "three";
 import { EffectComposer, Bloom, Noise, Vignette } from "@react-three/postprocessing";
+import { canUseWebGL } from "@/app/utils/canUseWebGL";
+
+
+// SpaceHero.tsx 内の canInitThreeRenderer をこうする
+function canInitThreeRenderer(): boolean {
+    try {
+        const testCanvas = document.createElement("canvas");
+
+        // ★ WebGL1 を明示（webgl / experimental-webgl）
+        const gl =
+            (testCanvas.getContext("webgl", {
+                alpha: true,
+                antialias: false,
+                preserveDrawingBuffer: false,
+                powerPreference: "low-power",
+                failIfMajorPerformanceCaveat: false,
+            }) ||
+                testCanvas.getContext("experimental-webgl")) as
+            | WebGLRenderingContext
+            | null;
+
+        if (!gl) return false;
+
+        // ★ three の通常の WebGLRenderer に「context: gl」を渡す
+        const testRenderer = new THREE.WebGLRenderer({
+            canvas: testCanvas,
+            context: gl,
+            alpha: true,
+            antialias: false,
+            preserveDrawingBuffer: false,
+            powerPreference: "low-power",
+            // failIfMajorPerformanceCaveat は WebGL の getContext 側で指定済み
+        });
+
+        testRenderer.setSize(1, 1, false);
+        testRenderer.dispose();
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 
 function mulberry32(seed: number) {
     return function () {
@@ -107,8 +149,10 @@ function Lights() {
 export interface SpaceHeroProps extends React.ComponentPropsWithoutRef<"div"> {
     children?: React.ReactNode;
     particleCount?: number;
-    onReady?: () => void;       // ローダーはpage側で。ここは通知だけ
+    onReady?: () => void;
 }
+
+const ENABLE_3D = process.env.NEXT_PUBLIC_ENABLE_3D !== "false";
 
 export default function SpaceHero({
     children,
@@ -117,24 +161,80 @@ export default function SpaceHero({
     className,
     ...rest
 }: SpaceHeroProps) {
+    const [enabled, setEnabled] = useState(false);
 
-    // Canvas作成後の1フレーム後に通知（安全・一定）
+
+    // Canvas作成時の安全化
     const handleCreated = ({ gl }: { gl: THREE.WebGLRenderer }) => {
-        gl.setClearColor("#0a0a0a", 1); // 不透明背景
-        // webglcontextlost 保険
-        const canvasEl = gl.domElement as HTMLCanvasElement;
-        const onLost = (e: Event) => e.preventDefault();
-        canvasEl.addEventListener("webglcontextlost", onLost as EventListener, { passive: false });
+        try {
+            gl.setClearColor("#0a0a0a", 1);
+            gl.setPixelRatio(Math.min(window.devicePixelRatio ?? 1, 1.5));
+            // 失敗しやすい環境でも通りやすい設定に
+            gl.getContext().getExtension?.("OES_standard_derivatives");
 
-        requestAnimationFrame(() => { onReady?.(); });
+            // webglcontextlost 保険
+            const canvasEl = gl.domElement as HTMLCanvasElement;
+            const onLost = (e: Event) => e.preventDefault();
+            canvasEl.addEventListener("webglcontextlost", onLost as EventListener, { passive: false });
+
+            requestAnimationFrame(() => { onReady?.(); });
+        } catch (e) {
+            console.warn("WebGL onCreated failed:", e);
+            setEnabled(false); // → フォールバックへ
+        }
     };
 
+    // --- フォールバック（静的背景） ---
+if (!enabled) {
+  return (
+    <div
+      className={`fallback-hero relative h-[80vh] w-full overflow-hidden rounded-2xl bg-black ${className ?? ""}`}
+      {...rest}
+      aria-hidden="true"
+      style={{
+        background:
+          "radial-gradient(120% 120% at 10% 10%, rgba(99,102,241,0.25), rgba(56,189,248,0.15) 40%, rgba(0,0,0,0) 70%)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        backdropFilter: "blur(6px)",
+      }}
+    >
+      {/* ノイズの薄い質感（任意） */}
+      <div className="pointer-events-none absolute inset-0 mix-blend-overlay opacity-[0.06] bg-[radial-gradient(circle_at_1px_1px,rgba(255,255,255,.8)_1px,transparent_1px)] bg-[length:12px_12px]" />
+
+      {children && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+    useEffect(() => {
+        if (!ENABLE_3D) return;
+        if (typeof window === "undefined") return;
+
+        const prefersReduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+        if (prefersReduced) return;
+
+        if (!canInitThreeRenderer()) return;
+
+        setEnabled(true);
+    }, []);
+
+    // --- 通常（3D表示） ---
     return (
         <div className={`relative h-[80vh] w-full overflow-hidden rounded-2xl bg-black ${className ?? ""}`} {...rest}>
             <Canvas
                 camera={{ position: [0, 1.4, 7], fov: 52 }}
-                dpr={1}                    // 安定優先（必要なら 1.5 に戻す）
-                gl={{ alpha: false, antialias: true }}
+                dpr={[1, 1.5]} // 安定優先
+                gl={{
+                    alpha: false,
+                    antialias: false,                 // 失敗率を下げる
+                    powerPreference: "low-power",     // 古環境での成功率↑
+                    preserveDrawingBuffer: false,
+                    failIfMajorPerformanceCaveat: false,
+                }}
                 onCreated={handleCreated}
             >
                 <Lights />
@@ -144,7 +244,7 @@ export default function SpaceHero({
                     <FloorGrid />
                 </group>
 
-                {/* ポストプロセス（重い/怪しいなら一旦コメントアウトして挙動確認） */}
+                {/* 重いならここをコメントアウトして検証可 */}
                 <EffectComposer>
                     <Bloom intensity={0.5} luminanceThreshold={0.2} luminanceSmoothing={0.25} mipmapBlur />
                     <Noise premultiply opacity={0.035} />
@@ -152,7 +252,6 @@ export default function SpaceHero({
                 </EffectComposer>
             </Canvas>
 
-            {/* 中央テキスト/CTAなど */}
             {children && (
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
                     {children}
