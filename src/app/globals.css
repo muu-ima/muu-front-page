@@ -17,3 +17,24 @@
         animation: marquee 22s linear infinite;
     }
 }
+
+/* ゆっくり動く光の滲み */
+.fallback-hero::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  background: radial-gradient(60% 60% at 18% 22%,
+    rgba(99,102,241,.28),
+    rgba(56,189,248,.16) 45%,
+    transparent 70%);
+  filter: blur(16px);
+  animation: fallbackFloat 14s ease-in-out infinite alternate;
+}
+@keyframes fallbackFloat {
+  0%   { transform: translate3d(0,0,0) rotate(0deg); }
+  100% { transform: translate3d(12px,-8px,0) rotate(2deg); }
+}
+/* 動きを苦手とするユーザー配慮 */
+@media (prefers-reduced-motion: reduce) {
+  .fallback-hero::before { animation: none; }
+}
