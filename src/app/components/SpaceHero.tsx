@@ -7,34 +7,50 @@ import { Grid } from "@react-three/drei";
 import * as THREE from "three";
 import { EffectComposer, Bloom, Noise, Vignette } from "@react-three/postprocessing";
 
-// --- WebGL実起動テスト（本番オプションで事前にRendererを作ってみる）---
+/** 事前レンダラ起動テスト（成功なら true） */
 function canInitThreeRenderer(): boolean {
+  // Strategy A: three にコンテキスト生成を任せる
   try {
-    const testCanvas = document.createElement("canvas");
-    const gl =
-      (testCanvas.getContext("webgl", {
-        alpha: true,
-        antialias: false,
-        preserveDrawingBuffer: false,
-        powerPreference: "low-power",
-        failIfMajorPerformanceCaveat: false,
-      }) ||
-        testCanvas.getContext("experimental-webgl")) as WebGLRenderingContext | null;
-    if (!gl) return false;
-
-    const testRenderer = new THREE.WebGLRenderer({
-      canvas: testCanvas,
-      context: gl,
+    const r = new THREE.WebGLRenderer({
       alpha: true,
       antialias: false,
-      preserveDrawingBuffer: false,
       powerPreference: "low-power",
+      preserveDrawingBuffer: false,
+      // failIfMajorPerformanceCaveat は getContext 側で効くのでここは不要
     });
-    testRenderer.setSize(1, 1, false);
-    testRenderer.dispose();
+    r.setSize(1, 1, false);
+    r.dispose();
     return true;
-  } catch {
-    return false;
+  } catch (eA) {
+    // Strategy B: WebGL1 を自前生成して渡す
+    try {
+      const testCanvas = document.createElement("canvas");
+      const gl =
+        (testCanvas.getContext("webgl", {
+          alpha: true,
+          antialias: false,
+          preserveDrawingBuffer: false,
+          powerPreference: "low-power",
+          failIfMajorPerformanceCaveat: false,
+        }) ||
+          testCanvas.getContext("experimental-webgl")) as WebGLRenderingContext | null;
+
+      if (!gl) throw new Error("No WebGL1 context");
+      const r2 = new THREE.WebGLRenderer({
+        canvas: testCanvas,
+        context: gl,
+        alpha: true,
+        antialias: false,
+        powerPreference: "low-power",
+        preserveDrawingBuffer: false,
+      });
+      r2.setSize(1, 1, false);
+      r2.dispose();
+      return true;
+    } catch (eB) {
+      console.info("[SpaceHero] renderer preflight failed.", { eA, eB });
+      return false;
+    }
   }
 }
 
@@ -144,18 +160,40 @@ export interface SpaceHeroProps extends React.ComponentPropsWithoutRef<"div"> {
 const ENABLE_3D = process.env.NEXT_PUBLIC_ENABLE_3D !== "false";
 
 export default function SpaceHero({ children, particleCount = 2600, onReady, className, ...rest }: SpaceHeroProps) {
-  // --- Hooks はトップレベルに固定 ---
   const [enabled, setEnabled] = useState(false);
 
   useEffect(() => {
-    if (!ENABLE_3D) return;
     if (typeof window === "undefined") return;
 
-    const prefersReduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    if (prefersReduced) return;
+    const params = new URLSearchParams(window.location.search);
+    const force3d = params.get("force3d") === "1";
+    const forceFallback = params.get("forcefallback") === "1";
+    const prefersReduced = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
 
-    if (!canInitThreeRenderer()) return;
-    setEnabled(true);
+    // ログで可視化
+    console.info("[SpaceHero] gates", {
+      ENABLE_3D,
+      prefersReduced,
+      force3d,
+      forceFallback,
+    });
+
+    if (forceFallback) return;                  // 強制フォールバック
+    if (!ENABLE_3D) return;                     // 環境変数でOFF
+    if (prefersReduced && !force3d) return;     // OS設定で動き抑制（強制ONが無ければOFF）
+
+    if (force3d) {
+      setEnabled(true);                         // 強制ON
+      return;
+    }
+
+    // 事前テストに通ったらON
+    if (canInitThreeRenderer()) {
+      setEnabled(true);
+    } else {
+      // 失敗 → フォールバック（ログだけ）
+      console.info("[SpaceHero] preflight failed → fallback");
+    }
   }, []);
 
   const handleCreated = ({ gl }: { gl: THREE.WebGLRenderer }) => {
@@ -163,21 +201,16 @@ export default function SpaceHero({ children, particleCount = 2600, onReady, cla
       gl.setClearColor("#0a0a0a", 1);
       gl.setPixelRatio(Math.min(window.devicePixelRatio ?? 1, 1.5));
       gl.getContext().getExtension?.("OES_standard_derivatives");
-
       const canvasEl = gl.domElement as HTMLCanvasElement;
       const onLost = (e: Event) => e.preventDefault();
       canvasEl.addEventListener("webglcontextlost", onLost as EventListener, { passive: false });
-
-      requestAnimationFrame(() => {
-        onReady?.();
-      });
+      requestAnimationFrame(() => onReady?.());
     } catch (e) {
       console.warn("WebGL onCreated failed:", e);
       setEnabled(false);
     }
   };
 
-  // --- JSX を用意して最後に分岐で返す ---
   const fallbackView = (
     <div
       className={`fallback-hero relative h-[80vh] w-full overflow-hidden rounded-2xl bg-black ${className ?? ""}`}
@@ -190,16 +223,13 @@ export default function SpaceHero({ children, particleCount = 2600, onReady, cla
         backdropFilter: "blur(6px)",
       }}
     >
-      {/* 薄いノイズの質感（任意） */}
       <div className="pointer-events-none absolute inset-0 mix-blend-overlay opacity-[0.06] bg-[radial-gradient(circle_at_1px_1px,rgba(255,255,255,.8)_1px,transparent_1px)] bg-[length:12px_12px]" />
-      {children && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">{children}</div>
-      )}
+      {children && <div className="pointer-events-none absolute inset-0 flex items-center justify-center">{children}</div>}
     </div>
   );
 
   const threeView = (
-    <div className={`relative h+[80vh] w-full overflow-hidden rounded-2xl bg-black ${className ?? ""}`} {...rest}>
+    <div className={`relative h-[80vh] w-full overflow-hidden rounded-2xl bg-black ${className ?? ""}`} {...rest}>
       <Canvas
         camera={{ position: [0, 1.4, 7], fov: 52 }}
         dpr={[1, 1.5]}
@@ -218,7 +248,6 @@ export default function SpaceHero({ children, particleCount = 2600, onReady, cla
           <Rings rings={12} gap={2.2} />
           <FloorGrid />
         </group>
-
         <EffectComposer>
           <Bloom intensity={0.5} luminanceThreshold={0.2} luminanceSmoothing={0.25} mipmapBlur />
           <Noise premultiply opacity={0.035} />
@@ -226,9 +255,7 @@ export default function SpaceHero({ children, particleCount = 2600, onReady, cla
         </EffectComposer>
       </Canvas>
 
-      {children && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">{children}</div>
-      )}
+      {children && <div className="pointer-events-none absolute inset-0 flex items-center justify-center">{children}</div>}
     </div>
   );
 
